@@ -101,6 +101,7 @@ void vtd_dmar_parse(vtd_engine_t *engine_list)
 {
 	acpi_dmar_table_t *acpi_dmar;
 	acpi_dma_hw_unit_t *unit;
+	uint32_t table_length;
 	uint32_t offset = 0, id = 0;
 	uint64_t hva;
 
@@ -108,9 +109,12 @@ void vtd_dmar_parse(vtd_engine_t *engine_list)
 
 	acpi_dmar = (acpi_dmar_table_t *)acpi_locate_table(DMAR_SIGNATURE);
 	VMM_ASSERT_EX(acpi_dmar, "acpi_dmar is NULL\n");
+	table_length = acpi_dmar->header.length;
+	VMM_ASSERT_EX(table_length >= sizeof(acpi_dmar_table_t),
+			"Invalid DMAR table length %u\n", table_length);
 	print_info("VTD is detected.\n");
 
-	while (offset < (acpi_dmar->header.length - sizeof(acpi_dmar_table_t))) {
+	while (offset < (table_length - sizeof(acpi_dmar_table_t))) {
 
 		unit = (acpi_dma_hw_unit_t *)(void *)(acpi_dmar->remapping_structures + offset);
 
@@ -155,7 +159,7 @@ void vtd_dmar_parse(vtd_engine_t *engine_list)
 	VMM_ASSERT_EX(id, "No DMAR HW unit found from ACPI table!");
 
 	/* Hide VT-D ACPI table and make a fake one */
-	memset((void *)&acpi_dmar->header.signature, 0, acpi_dmar->header.length);
+	memset((void *)acpi_dmar, 0, table_length);
 	make_fake_acpi(&acpi_dmar->header);
 }
 

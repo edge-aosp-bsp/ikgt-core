@@ -361,7 +361,7 @@ long trusty_ffa_fill_desc(guest_cpu_handle_t gcpu,
 	if (obj->desc_filled != obj->desc_size) {
 		SMC_RET8(gcpu, smc_handle, SMC_FC_FFA_MEM_FRAG_RX, handle_low,
 				handle_high, obj->desc_filled,
-				obj->desc.sender_id << 16, 0, 0, 0);
+				((uint32_t)obj->desc.sender_id) << 16U, 0, 0, 0);
 	}
 
 	SMC_RET8(gcpu, smc_handle, SMC_FC_FFA_SUCCESS, 0, handle_low, handle_high, 0,
