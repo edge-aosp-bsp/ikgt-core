@@ -9,6 +9,8 @@
 #include "shared-mem-smcall.h"
 #include "lib/util.h"
 #include "errno.h"
+#include "gpm.h"
+#include "hmm.h"
 
 /*
  * Use a 512KB buffer by default for shared memory descriptors. Set
@@ -337,7 +339,8 @@ long trusty_ffa_fill_desc(guest_cpu_handle_t gcpu,
 	if (fragment_length > obj->desc_size - obj->desc_filled) {
 		print_panic("%s: bad fragment size %u > %zu remaining\n", __func__,
 				fragment_length, obj->desc_size - obj->desc_filled);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err_bad_desc;
 	}
 
 	memcpy((uint8_t *)&obj->desc + obj->desc_filled, client->tx_buf,
@@ -627,7 +630,7 @@ static long trusty_ffa_mem_frag_rx(guest_cpu_handle_t gcpu,
 
 	src = (void *)((uint64_t)&obj->desc + fragment_offset);
 
-	memcpy(client->rx_buf, (void *)((uint64_t)src + fragment_offset), copy_size);
+	memcpy(client->rx_buf, src, copy_size);
 
 	SMC_RET8(gcpu, smc_handle, SMC_FC_FFA_MEM_FRAG_TX, handle_low, handle_high,
 			copy_size, sender_id, 0, 0, 0);
@@ -722,9 +725,10 @@ static int trusty_ffa_mem_reclaim(struct trusty_shmem_client_state *client,
 
 /**
  * trusty_ffa_rxtx_map - FFA_RXTX_MAP implementation.
+ * @gcpu:       Guest CPU handle for GPA translation.
  * @client:     Client state.
- * @tx_address: Address of client's transmit buffer.
- * @rx_address: Address of client's receive buffer.
+ * @tx_address: Address of client's transmit buffer (GPA for non-identity clients).
+ * @rx_address: Address of client's receive buffer (GPA for non-identity clients).
  * @page_count: Number of (contiguous) 4K pages per buffer.
  *
  * Implements the FF-A FFA_RXTX_MAP call.
@@ -732,11 +736,14 @@ static int trusty_ffa_mem_reclaim(struct trusty_shmem_client_state *client,
  *
  * Return: 0 on success, error code on failure.
  */
-static long trusty_ffa_rxtx_map(struct trusty_shmem_client_state *client,
+static long trusty_ffa_rxtx_map(guest_cpu_handle_t gcpu,
+		struct trusty_shmem_client_state *client,
 		uint64_t tx_address,
 		uint64_t rx_address,
 		uint64_t page_count) {
 	uint64_t buf_size = page_count * FFA_PAGE_SIZE;
+	uint64_t tx_hpa, rx_hpa;
+	uint64_t tx_hva, rx_hva;
 
 	if (!buf_size) {
 		print_panic("%s: invalid page_count %ld\n", __func__, page_count);
@@ -748,17 +755,48 @@ static long trusty_ffa_rxtx_map(struct trusty_shmem_client_state *client,
 		return -EACCES;
 	}
 
-	/*
-	 * Following mechanism is different from orginal implementation.
-	 * In FFA implementation, if client is not identity mapped, firmware
-	 * needs to create mapping for PA: tx_address and rx_address.
-	 * In switcher solution, we treat VA identical to PA, so with this
-	 * assumption, both Trusty and Test-runner need to prepare this mapping.
-	 *
-	 */
+	/* For non-identity-mapped clients (GUEST_REE/Android), translate GPA to HVA */
+	if (!client->identity_mapped) {
+		/* Validate and translate tx_address GPA -> HPA -> HVA */
+		if (!gpm_gpa_to_hpa(gcpu->guest, tx_address, &tx_hpa, NULL)) {
+			print_panic("%s: tx_address 0x%llx not in guest GPA range\n",
+				__func__, tx_address);
+			return -EINVAL;
+		}
+		if (!hmm_hpa_to_hva(tx_hpa, &tx_hva)) {
+			print_panic("%s: tx HPA 0x%llx not mapped in VMM\n",
+				__func__, tx_hpa);
+			return -EINVAL;
+		}
+
+		/* Validate and translate rx_address GPA -> HPA -> HVA */
+		if (!gpm_gpa_to_hpa(gcpu->guest, rx_address, &rx_hpa, NULL)) {
+			print_panic("%s: rx_address 0x%llx not in guest GPA range\n",
+				__func__, rx_address);
+			return -EINVAL;
+		}
+		if (!hmm_hpa_to_hva(rx_hpa, &rx_hva)) {
+			print_panic("%s: rx HPA 0x%llx not mapped in VMM\n",
+				__func__, rx_hpa);
+			return -EINVAL;
+		}
+
+		/* Range-check: ensure buffer stays within guest physical memory */
+		if (!gpm_gpa_to_hpa(gcpu->guest, tx_address + buf_size - 1, &tx_hpa, NULL) ||
+		    !gpm_gpa_to_hpa(gcpu->guest, rx_address + buf_size - 1, &rx_hpa, NULL)) {
+			print_panic("%s: buffer range exceeds guest GPA bounds\n", __func__);
+			return -EINVAL;
+		}
+
+		client->tx_buf = (const void *)tx_hva;
+		client->rx_buf = (void *)rx_hva;
+	} else {
+		/* Identity-mapped clients (Trusty): use addresses directly */
+		client->tx_buf = (const void *)tx_address;
+		client->rx_buf = (void *)rx_address;
+	}
+
 	client->buf_size = buf_size;
-	client->tx_buf = (const void *)tx_address;
-	client->rx_buf = (void *)rx_address;
 
 	return 0;
 }
@@ -967,7 +1005,7 @@ int spm_mm_smc_handler(guest_cpu_handle_t gcpu) {
 
 		case SMC_FC_FFA_RXTX_MAP:
 		case SMC_FC64_FFA_RXTX_MAP:
-			ret = trusty_ffa_rxtx_map(client, x1, x2, x3);
+			ret = trusty_ffa_rxtx_map(gcpu, client, x1, x2, x3);
 			break;
 
 		case SMC_FC_FFA_RXTX_UNMAP:
