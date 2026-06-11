@@ -118,23 +118,17 @@ void vtd_dmar_parse(vtd_engine_t *engine_list)
 			/* DMAR type hardware uint */
 			case 0:
 #ifdef SKIP_DMAR_GPU
-// OAM-42091 work round -- start
 				if (dmar_engine_takes_charge_of_gpu(unit)) {
-					/*
-					 * Add print info here to check VT-D GPU work round easy.
-					 * DMAR engine 0 takes charge of GPU
-					 */
-					print_info("VT-D: SKIP_DMAR_GPU is on\n");
-					print_info("\tSkip DMAR engine for GPU\n");
+					print_info("VT-D: GPU DMAR engine registered for IOMMU protection\n");
 					if (id != 0) {
 						print_info("*****************************************************\n");
 						print_info("!!CAUTION!!:\t");
 						print_info("\tDAMR ENGINE(%d) FOR GPU IS UNEXPECTED\n", id);
 						print_info("*****************************************************\n");
 					}
-					break;
+					/* fall through: add GPU engine to engine_list[] so vtd_activate_internal()
+					 * installs the root table and vtd_guest_setup() EPT-unmaps its MMIO page */
 				}
-// OAM-42091 work round -- end
 #endif
 				VMM_ASSERT_EX((id < DMAR_MAX_ENGINE),
 						"too many dmar engines\n");
