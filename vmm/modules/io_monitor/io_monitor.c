@@ -650,6 +650,12 @@ void io_monitor_handler(guest_cpu_handle_t gcpu)
 	p_io_mon = io_list_lookup(p_io_mon_guest->io_list, port_id);
 	D(VMM_ASSERT(p_io_mon));
 
+	/* Handle unregistered port access (e.g., multi-byte I/O straddling registered port) */
+	if (!p_io_mon) {
+		gcpu_inject_gp0(gcpu);
+		return;
+	}
+
 	if (!io_monitor_check_fault(gcpu))
 		return;
 
