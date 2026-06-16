@@ -73,11 +73,12 @@ static void derive_cpu_masks(void)
 		uint32_t mask_smt_shift;
 		uint32_t mask_core_shift = 0;
 		uint32_t core_plus_smt_mask;
+		const uint32_t all_ones = (uint32_t)~0U;
 		cpuid_params_t leaf_0b = {0xb, 0, 0, 0};
 		asm_cpuid(&leaf_0b);
 
 		mask_smt_shift = leaf_0b.eax & 0x1FU;
-		smt_mask = ~((-1U) << mask_smt_shift);
+		smt_mask = ~(all_ones << mask_smt_shift);
 
 		while (LEVEL_TYPE(leaf_0b.ecx)) {
 			mask_core_shift = leaf_0b.eax & 0x1FU;
@@ -86,10 +87,10 @@ static void derive_cpu_masks(void)
 			leaf_0b.eax = 0xb;
 			asm_cpuid(&leaf_0b);
 		}
-		core_plus_smt_mask = ~((-1U) << mask_core_shift);
+		core_plus_smt_mask = ~(all_ones << mask_core_shift);
 
 		core_mask = core_plus_smt_mask ^ smt_mask;
-		package_mask = (-1U) << mask_core_shift;
+		package_mask = all_ones << mask_core_shift;
 	} else {
 		uint32_t max_LPIDs_per_package, max_CoreIDs_per_package;
 		uint32_t smt_mask_width, core_mask_width;
