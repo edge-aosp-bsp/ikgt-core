@@ -262,6 +262,21 @@ void init_trusty_tee(evmm_desc_t *evmm_desc)
 	trusty_cfg.tee_runtime_addr = runtime_addr - barrier_size;
 	trusty_cfg.tee_runtime_size = runtime_size + 2 * barrier_size;
 
+	/*
+	 * Trusty physical memory layout. Because EVMM uses identity mapping
+	 * (GPA == HPA), os_base IS the physical address of Trusty OS.
+	 * The "ree_blocked" span is the exact GPA range removed from the
+	 * Android/REE guest EPT by remove_this_tee_range() in template_tee.c.
+	 * Any REE access to an address inside this span causes an EPT violation,
+	 * which proves Trusty memory is isolated from REE.
+	 */
+	print_trace("DBG_TRUSTY_MEM: os_base=0x%llx os_size=0x%llx barrier=0x%llx ree_blocked=[0x%llx..0x%llx)\r\n",
+			(unsigned long long)runtime_addr,
+			(unsigned long long)runtime_size,
+			(unsigned long long)barrier_size,
+			(unsigned long long)trusty_cfg.tee_runtime_addr,
+			(unsigned long long)(trusty_cfg.tee_runtime_addr + trusty_cfg.tee_runtime_size));
+
 	memcpy(seed, trusty_desc->seed, BUP_MKHI_BOOTLOADER_SEED_LEN);
 	memset((void *)trusty_desc->seed, 0, BUP_MKHI_BOOTLOADER_SEED_LEN);
 	barrier();

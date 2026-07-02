@@ -646,9 +646,16 @@ void io_monitor_handler(guest_cpu_handle_t gcpu)
 		(uint32_t)gcpu_get_gp_reg(gcpu, REG_RCX) : 1);
 
 	p_io_mon_guest = io_monitor_guest_lookup(guest->id);
-	D(VMM_ASSERT(p_io_mon_guest));
+	if (p_io_mon_guest == NULL) {
+		gcpu_inject_gp0(gcpu);
+		return;
+	}
+
 	p_io_mon = io_list_lookup(p_io_mon_guest->io_list, port_id);
-	D(VMM_ASSERT(p_io_mon));
+	if (p_io_mon == NULL) {
+		gcpu_inject_gp0(gcpu);
+		return;
+	}
 
 	if (!io_monitor_check_fault(gcpu))
 		return;

@@ -328,8 +328,7 @@ void vmm_main_continue(vmm_input_params_t *vmm_input_params)
 		AP_WAIT_FOR_STAGE(STAGE_INIT_MODULE);
 	} else {
 #ifdef MODULE_XSAVE
-		/* xsave(MMX|SSE) equals to fxsave*/
-		xsave_isolation_init(XSAVE_MMX | XSAVE_SSE);
+		xsave_isolation_init(0);
 #else
 #ifdef MODULE_FXSAVE
 		fxsave_isolation_init();
