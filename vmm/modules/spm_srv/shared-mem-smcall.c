@@ -337,7 +337,8 @@ long trusty_ffa_fill_desc(guest_cpu_handle_t gcpu,
 	if (fragment_length > obj->desc_size - obj->desc_filled) {
 		print_panic("%s: bad fragment size %u > %zu remaining\n", __func__,
 				fragment_length, obj->desc_size - obj->desc_filled);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err_bad_desc;
 	}
 
 	memcpy((uint8_t *)&obj->desc + obj->desc_filled, client->tx_buf,
@@ -627,7 +628,7 @@ static long trusty_ffa_mem_frag_rx(guest_cpu_handle_t gcpu,
 
 	src = (void *)((uint64_t)&obj->desc + fragment_offset);
 
-	memcpy(client->rx_buf, (void *)((uint64_t)src + fragment_offset), copy_size);
+	memcpy(client->rx_buf, src, copy_size);
 
 	SMC_RET8(gcpu, smc_handle, SMC_FC_FFA_MEM_FRAG_TX, handle_low, handle_high,
 			copy_size, sender_id, 0, 0, 0);
