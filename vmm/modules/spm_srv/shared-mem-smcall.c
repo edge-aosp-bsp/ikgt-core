@@ -9,6 +9,7 @@
 #include "shared-mem-smcall.h"
 #include "lib/util.h"
 #include "errno.h"
+#include "gpm.h"
 
 /*
  * Use a 512KB buffer by default for shared memory descriptors. Set
@@ -732,11 +733,12 @@ static int trusty_ffa_mem_reclaim(struct trusty_shmem_client_state *client,
  *
  * Return: 0 on success, error code on failure.
  */
-static long trusty_ffa_rxtx_map(struct trusty_shmem_client_state *client,
+static long trusty_ffa_rxtx_map(guest_cpu_handle_t gcpu, struct trusty_shmem_client_state *client,
 		uint64_t tx_address,
 		uint64_t rx_address,
 		uint64_t page_count) {
 	uint64_t buf_size = page_count * FFA_PAGE_SIZE;
+	uint64_t tx_hva, rx_hva;
 
 	if (!buf_size) {
 		print_panic("%s: invalid page_count %ld\n", __func__, page_count);
@@ -756,9 +758,13 @@ static long trusty_ffa_rxtx_map(struct trusty_shmem_client_state *client,
 	 * assumption, both Trusty and Test-runner need to prepare this mapping.
 	 *
 	 */
+	/* translate and range-check both addresses before assigning to client->tx_buf and client->rx_buf */
+	if(!gpm_gpa_to_hva(gcpu->guest, tx_address, GUEST_CAN_READ | GUEST_CAN_WRITE, &tx_hva) || 
+	   !gpm_gpa_to_hva(gcpu->guest, rx_address, GUEST_CAN_READ | GUEST_CAN_WRITE, &rx_hva))
+		return -EINVAL;
 	client->buf_size = buf_size;
-	client->tx_buf = (const void *)tx_address;
-	client->rx_buf = (void *)rx_address;
+	client->tx_buf = (const void *)tx_hva;
+	client->rx_buf = (void *)rx_hva;
 
 	return 0;
 }
@@ -967,7 +973,7 @@ int spm_mm_smc_handler(guest_cpu_handle_t gcpu) {
 
 		case SMC_FC_FFA_RXTX_MAP:
 		case SMC_FC64_FFA_RXTX_MAP:
-			ret = trusty_ffa_rxtx_map(client, x1, x2, x3);
+			ret = trusty_ffa_rxtx_map(gcpu, client, x1, x2, x3);
 			break;
 
 		case SMC_FC_FFA_RXTX_UNMAP:
