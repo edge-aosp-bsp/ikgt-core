@@ -32,71 +32,6 @@ typedef struct {
 	uint8_t             device_scope[0];
 } acpi_dma_hw_unit_t;
 
-#ifdef SKIP_DMAR_GPU
-// OAM-42091 work round -- start
-typedef struct {
-	uint8_t     dev;
-	uint8_t     func;
-} acpi_path_element_t;
-
-typedef struct {
-	uint8_t             type;
-	uint8_t             length;
-	uint16_t            reserved;
-	uint8_t             enumeration_id;
-	uint8_t             start_bus_num;
-	acpi_path_element_t path[0];
-} acpi_device_scope_t;
-
-/*
- * Assumption:
- *	1. If DMAR engine takes charge of GPU, type of device scope should be
- *		0x01: PCI Endpoint Device, bridge is not expected, do not need to
- *		walk through bridge from start bus. And GPU should be the one and
- *		the only device in devoce scope. So device number should be 1.
- *	2. Bus:Dev:Func of GPU equals to 0:2:0.
- */
-static boolean_t dmar_engine_takes_charge_of_gpu(acpi_dma_hw_unit_t *unit)
-{
-	uint32_t num_of_devices = 0;
-	acpi_device_scope_t *device_scope;
-
-	/*
-	 * Flags.Bit0: INCLUDE_PCI_ALL. If clear, this remapping hardware unit has
-	 * under its scope only devices in the specified Segment that are explicitly
-	 * identified through the 'Device Scope' field.
-	 *
-	 * More details please reference VT Directed IO Specification
-	 * Chapter 8.3: DMA Remapping Hardware Uint Definition Structure
-	 */
-	if (unit->flags & 1) {
-		return FALSE;
-	}
-
-	device_scope = (acpi_device_scope_t *)(void *)unit->device_scope;
-	num_of_devices = (device_scope->length - OFFSET_OF(acpi_device_scope_t, path))
-		/ sizeof(acpi_path_element_t);
-
-	/*
-	 * GPU device is PCI Endpoint Device, walk through bridge is unexpected.
-	 * So numbe of device should be 1.
-	 * Device type should be 1(PCI Endpoint device)
-	 * Bus:Dev:Func of GPU shoule be 0:2:0
-	 */
-
-	if ((1 == num_of_devices) &&
-		(1 == device_scope->type) &&
-		(0 == device_scope->start_bus_num) &&
-		(2 == device_scope->path->dev) &&
-		(0 == device_scope->path->func)) {
-		return TRUE;
-	}
-
-	return FALSE;
-}
-// OAM-42091 work round -- end
-#endif
-
 void vtd_dmar_parse(vtd_engine_t *engine_list)
 {
 	acpi_dmar_table_t *acpi_dmar;
@@ -117,25 +52,6 @@ void vtd_dmar_parse(vtd_engine_t *engine_list)
 		switch(unit->type) {
 			/* DMAR type hardware uint */
 			case 0:
-#ifdef SKIP_DMAR_GPU
-// OAM-42091 work round -- start
-				if (dmar_engine_takes_charge_of_gpu(unit)) {
-					/*
-					 * Add print info here to check VT-D GPU work round easy.
-					 * DMAR engine 0 takes charge of GPU
-					 */
-					print_info("VT-D: SKIP_DMAR_GPU is on\n");
-					print_info("\tSkip DMAR engine for GPU\n");
-					if (id != 0) {
-						print_info("*****************************************************\n");
-						print_info("!!CAUTION!!:\t");
-						print_info("\tDAMR ENGINE(%d) FOR GPU IS UNEXPECTED\n", id);
-						print_info("*****************************************************\n");
-					}
-					break;
-				}
-// OAM-42091 work round -- end
-#endif
 				VMM_ASSERT_EX((id < DMAR_MAX_ENGINE),
 						"too many dmar engines\n");
 				VMM_ASSERT_EX(hmm_hpa_to_hva(unit->reg_base_hpa, &hva),

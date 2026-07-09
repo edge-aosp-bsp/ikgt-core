@@ -171,8 +171,6 @@ Config files
 		SubFlags:
 			- DMAR_MAX_ENGINE
 				Description: Specify max DMAR engine in system. usually it is 4.
-			- SKIP_DMAR_GPU
-				Description: Workaround for bug OAM-42091, conflict with GFX.
 			- MULTI_GUEST_DMA
 				Description: Optional, allow a device access multi guests' memory by DMA.
 			- VTD_FORCE_ACTIVATE_ON_BOOT
