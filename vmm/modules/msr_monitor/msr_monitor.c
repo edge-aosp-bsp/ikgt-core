@@ -281,6 +281,7 @@ static void msr_misc_enable_write_handler(guest_cpu_handle_t gcpu,
 
 	/* Limit CPUID MAXVAL */
 	msr_value &= ~(1ULL << 22);
+	msr_value &= ~(1ULL << 34);
 
 	asm_wrmsr(MSR_MISC_ENABLE, msr_value);
 	gcpu_skip_instruction(gcpu);
